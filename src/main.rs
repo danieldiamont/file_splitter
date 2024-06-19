@@ -1,4 +1,5 @@
 use clap::Parser;
+use num_integer::div_rem;
 use std::{
     fs::File,
     io::{Read, Write},
@@ -45,31 +46,49 @@ fn crc32(buffer: &mut Vec<u8>) -> u32 {
     return crc ^ 0xFFFFFFFF;
 }
 
-fn get_part_name(file_name: String, part_num: usize) -> String {
-    return format!("{}.{:03}", file_name, part_num);
-}
-
-fn process_chunk(
-    buf: &mut Vec<u8>,
-    num_bytes: usize,
+fn get_part_name(
     file_name: String,
     part_num: usize,
-    compute_crcs: bool,
-) {
-    let part_file_name = get_part_name(file_name, part_num);
-    let mut part_file = File::create(part_file_name.clone()).unwrap();
+    chunk_size: usize,
+    file_size: usize,
+) -> String {
+    let num_chunks = calculate_num_chunks(file_size, chunk_size);
+    let width = count_digits(num_chunks);
+    return format!("{}.{:0width$}", file_name, part_num, width = width);
+}
+
+fn count_digits(num: usize) -> usize {
+    let mut count = 0;
+    let mut x = num;
+    while x > 0 {
+        count += 1;
+        x /= 10;
+    }
+    return count;
+}
+
+fn calculate_num_chunks(file_size: usize, chunk_size: usize) -> usize {
+    let (q, r) = div_rem(file_size, chunk_size);
+    return q + ((r > 0) as usize);
+}
+
+fn process_chunk(buf: &mut Vec<u8>, num_bytes: usize, file_name: String, compute_crcs: bool) {
+    let mut part_file = File::create(file_name.clone()).unwrap();
     let _ = part_file.write_all(&buf[0..num_bytes]);
 
     if compute_crcs {
-        let crc = crc32_file(part_file_name.clone());
+        let crc = crc32_file(file_name.clone());
         println!(
             "Processing chunk #: {}\t-- size: {} (bytes) -- crc32 = {}",
-            part_num, num_bytes, crc
+            file_name.clone(),
+            num_bytes,
+            crc
         );
     } else {
         println!(
             "Processing chunk #: {}\t-- size: {} (bytes)",
-            part_num, num_bytes
+            file_name.clone(),
+            num_bytes
         );
     }
 }
@@ -82,17 +101,19 @@ fn split_file(file_name: String, chunk_size: usize, compute_crcs: bool) {
     let mut buffer = vec![0; chunk_size];
     let mut _part_number = 0;
 
+    let filesize = file.metadata().unwrap().len();
+
     loop {
         match file.read(&mut buffer) {
             Ok(0) => break,
             Ok(n) => {
-                process_chunk(
-                    &mut buffer,
-                    n,
+                let part_file_name = get_part_name(
                     file_name.clone(),
                     _part_number,
-                    compute_crcs,
+                    chunk_size,
+                    filesize as usize,
                 );
+                process_chunk(&mut buffer, n, part_file_name, compute_crcs);
                 _part_number += 1;
             }
             Err(e) => panic!("ERROR: {:?}", e),
