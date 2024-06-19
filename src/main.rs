@@ -23,13 +23,13 @@ struct Args {
 
 fn crc32_file(file_path: PathBuf) -> u32 {
     let mut file = File::open(file_path.clone())
-        .expect(format!("Tried to open {:#?}", file_path.clone()).as_str());
+        .unwrap_or_else(|_| panic!("Tried to open {:#?}", file_path.clone()));
     let mut buffer = Vec::new();
     file.read_to_end(&mut buffer).unwrap();
-    return crc32(&mut buffer);
+    crc32(&mut buffer)
 }
 
-fn crc32(buffer: &mut Vec<u8>) -> u32 {
+fn crc32(buffer: &mut [u8]) -> u32 {
     let mut crc: u32 = 0xFFFFFFFF;
 
     for &byte in buffer.iter() {
@@ -42,7 +42,7 @@ fn crc32(buffer: &mut Vec<u8>) -> u32 {
             }
         }
     }
-    return crc ^ 0xFFFFFFFF;
+    crc ^ 0xFFFFFFFF
 }
 
 fn get_part_name(
@@ -53,7 +53,7 @@ fn get_part_name(
 ) -> String {
     let num_chunks = calculate_num_chunks(file_size, chunk_size);
     let width = count_digits(num_chunks);
-    return format!("{}.{:0width$}", file_path, part_num, width = width);
+    format!("{}.{:0width$}", file_path, part_num, width = width)
 }
 
 fn count_digits(num: usize) -> usize {
@@ -63,16 +63,18 @@ fn count_digits(num: usize) -> usize {
         count += 1;
         x /= 10;
     }
-    return count;
+
+    count
 }
 
 fn calculate_num_chunks(file_size: usize, chunk_size: usize) -> usize {
     let (q, r) = div_rem(file_size, chunk_size);
-    return q + ((r > 0) as usize);
+
+    q + ((r > 0) as usize)
 }
 
 fn process_chunk(
-    buf: &mut Vec<u8>,
+    buf: &mut [u8],
     num_bytes: usize,
     file_path: PathBuf,
     compare: Option<PathBuf>,
@@ -88,7 +90,7 @@ fn process_chunk(
         crc
     );
 
-    let crc_comp: Option<u32> = compare.clone().map(|path| crc32_file(path));
+    let crc_comp: Option<u32> = compare.clone().map(crc32_file);
 
     if let Some(crc_comp_val) = crc_comp {
         assert_eq!(
