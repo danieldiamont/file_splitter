@@ -52,7 +52,7 @@ fn get_part_name(
     file_size: usize,
 ) -> String {
     let num_chunks = calculate_num_chunks(file_size, chunk_size);
-    let width = count_digits(num_chunks);
+    let width = count_digits(num_chunks-1);
     format!("{}.{:0width$}", file_path, part_num, width = width)
 }
 
