@@ -6,3 +6,6 @@ edition = "2021"
 [dependencies]
 clap = { version = "4.5.7", features = ["derive"] }
 num-integer = "0.1.46"
+
+[profile.release]
+debug = true
