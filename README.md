@@ -22,7 +22,7 @@ To run this program, you need to have Rust installed. You can then compile and r
 ### Example
 
 ```sh
-cargo run -- --file-path /path/to/your/file --chunk-size 2048 --compare-dir /path/to/compare/dir
+cargo run --release -- --file-path /path/to/your/file --chunk-size 2048 --compare-dir /path/to/compare/dir
 ```
 
 ### License
