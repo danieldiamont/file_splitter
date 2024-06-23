@@ -21,28 +21,44 @@ struct Args {
     compare_dir: Option<PathBuf>,
 }
 
-fn crc32_file(file_path: PathBuf) -> u32 {
+fn crc32_file(file_path: PathBuf, crc_table: &[u32]) -> u32 {
     let mut file = File::open(file_path.clone())
         .unwrap_or_else(|_| panic!("Tried to open {:#?}", file_path.clone()));
     let mut buffer = Vec::new();
     file.read_to_end(&mut buffer).unwrap();
-    crc32(&mut buffer)
+    crc32(&mut buffer, crc_table)
 }
 
-fn crc32(buffer: &mut [u8]) -> u32 {
+fn crc32(buffer: &mut [u8], crc_table: &[u32]) -> u32 {
+    /*
+    let start = std::time::Instant::now();
+    */
     let mut crc: u32 = 0xFFFFFFFF;
 
     for &byte in buffer.iter() {
-        crc ^= byte as u32;
+        let idx = ((crc ^ (byte as u32)) & 0xFF) as usize;
+        crc = (crc >> 8) ^ crc_table[idx];
+    }
+
+    /*
+    let end = start.elapsed();
+    println!("{:#?}", end);
+    */
+    crc ^ 0xFFFFFFFF
+}
+
+fn crc32_init_table(table: &mut [u32]) {
+    for i in 0..256 {
+        let mut crc: u32 = i;
         for _ in 0..8 {
-            if crc & 1 == 1 {
+            if crc & 1 != 0 {
                 crc = (crc >> 1) ^ CRC_POLYNOMIAL;
             } else {
                 crc >>= 1;
             }
         }
+        table[i as usize] = crc;
     }
-    crc ^ 0xFFFFFFFF
 }
 
 fn get_part_name(
@@ -78,11 +94,12 @@ fn process_chunk(
     num_bytes: usize,
     file_path: PathBuf,
     compare: Option<PathBuf>,
+    crc_table: &[u32]
 ) {
     let mut part_file = File::create(file_path.clone()).unwrap();
     let _ = part_file.write_all(&buf[0..num_bytes]);
 
-    let crc = crc32_file(file_path.clone());
+    let crc = crc32_file(file_path.clone(), crc_table);
     println!(
         "Processing chunk #: {:#?}\t-- size: {} (bytes) -- crc32 = 0x{:08X}",
         file_path.clone(),
@@ -90,7 +107,7 @@ fn process_chunk(
         crc
     );
 
-    let crc_comp: Option<u32> = compare.clone().map(crc32_file);
+    let crc_comp: Option<u32> = compare.clone().map(|path| crc32_file(path, crc_table));
 
     if let Some(crc_comp_val) = crc_comp {
         assert_eq!(
@@ -108,6 +125,9 @@ fn process_chunk(
 fn split_file(file_path: PathBuf, chunk_size: usize, compare_dir: Option<PathBuf>) {
     assert!(chunk_size > 0);
     println!("filename: {:#?}\t chunk_size: {}", file_path, chunk_size);
+
+    let mut crc_table = [0u32; 256];
+    crc32_init_table(&mut crc_table);
 
     let mut file = File::open(file_path.clone()).unwrap();
     let mut buffer = vec![0; chunk_size];
@@ -136,7 +156,7 @@ fn split_file(file_path: PathBuf, chunk_size: usize, compare_dir: Option<PathBuf
                     .as_ref()
                     .map(|dir| dir.join(part_file_name.clone()));
 
-                process_chunk(&mut buffer, n, part_file_path, comp);
+                process_chunk(&mut buffer, n, part_file_path, comp, &crc_table);
 
                 _part_number += 1;
             }
@@ -157,22 +177,28 @@ mod tests {
     #[test]
     fn crc32_empty_buffer() {
         let mut buf: Vec<u8> = Vec::new();
+        let mut table = [0u32; 256];
+        crc32_init_table(&mut table);
 
-        assert_eq!(crc32(&mut buf), 0);
+        assert_eq!(crc32(&mut buf, &table), 0);
     }
 
     #[test]
     fn crc32_single_byte_buffer() {
         let mut buf: Vec<u8> = Vec::new();
         buf.push(b'a');
+        let mut table = [0u32; 256];
+        crc32_init_table(&mut table);
 
-        assert_eq!(crc32(&mut buf), 3904355907);
+        assert_eq!(crc32(&mut buf, &table), 3904355907);
     }
 
     #[test]
     fn crc32_known_string() {
         let mut buf: Vec<u8> = Vec::from("123456789".as_bytes());
+        let mut table = [0u32; 256];
+        crc32_init_table(&mut table);
 
-        assert_eq!(crc32(&mut buf), 3421780262);
+        assert_eq!(crc32(&mut buf, &table), 3421780262);
     }
 }
